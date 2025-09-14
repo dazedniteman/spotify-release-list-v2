@@ -1,72 +1,85 @@
+// src/components/Releases.js - Updated to use new view modes
+
+import React from 'react'
 import { useSelector } from 'react-redux'
-import { useHotkeys } from 'react-hotkeys-hook'
-import { useNavigate } from 'react-router-dom'
-import {
-  getSyncing,
-  getUser,
-  getReleases,
-  getWorking,
-  getEditingFavorites,
-  getLastSettingsPath,
-} from 'state/selectors'
-import { useDynamicKey } from 'hooks'
-import { deferred, modalsClosed } from 'helpers'
-import { VerticalLayout, Content, Centered } from 'components/common'
-import { Filters } from 'components/filters'
-import { PlaylistModalContainer } from 'components/modals'
-import ReleasesHeader from './ReleasesHeader'
-import Intro from './Intro'
-import Loading from './Loading'
-import ReleaseList from './ReleaseList'
+import { getReleases, getViewMode, getHasReleases } from 'state/selectors'
+import TableView from './TableView'
+import ViewModeToggle from './ViewModeToggle'
+import SyncProgress from './SyncProgress'
+// Import your existing card components
+import ReleasesCards from './ReleasesCards' // or whatever you call your current card view
 
-/**
- * Releases screen
- */
-function Releases() {
-  const navigate = useNavigate()
-  const user = useSelector(getUser)
-  const working = useSelector(getWorking)
-  const syncing = useSelector(getSyncing)
-  const editingFavorites = useSelector(getEditingFavorites)
-  const lastSettingsPath = useSelector(getLastSettingsPath)
+export function Releases() {
   const releases = useSelector(getReleases)
-  const listKey = useDynamicKey([editingFavorites, releases])
+  const viewMode = useSelector(getViewMode)
+  const hasReleases = useSelector(getHasReleases)
 
-  useHotkeys('s', deferred(navigate, lastSettingsPath || '/settings'), {
-    enabled: () => !working && modalsClosed(),
-  })
-
-  const renderContent = () => {
-    if (!user) {
-      return (
-        <Centered>
-          <Intro />
-        </Centered>
-      )
-    }
-
-    if (syncing) {
-      return (
-        <Centered>
-          <Loading />
-        </Centered>
-      )
-    }
-
-    if (!releases.length) {
-      return <Centered>No albums to display</Centered>
-    }
-
-    return <ReleaseList releases={releases} key={listKey} />
+  if (!hasReleases) {
+    return (
+      <div className="releases-empty">
+        <p>No releases found. Try adjusting your filters or syncing your data.</p>
+      </div>
+    )
   }
 
   return (
-    <VerticalLayout>
-      <ReleasesHeader />
-      <Filters />
-      <Content>{renderContent()}</Content>
-      <PlaylistModalContainer />
-    </VerticalLayout>
+    <div className="releases-container">
+      <SyncProgress />
+      
+      {/* Header with view toggle */}
+      <div className="releases-header">
+        <div className="releases-stats">
+          <span>{releases.length} releases</span>
+        </div>
+        <ViewModeToggle />
+      </div>
+
+      {/* Conditional rendering based on view mode */}
+      {viewMode === 'table' ? (
+        <TableView />
+      ) : (
+        <ReleasesCards releases={releases} />
+      )}
+
+      <style jsx>{`
+        .releases-container {
+          width: 100%;
+          padding: 20px;
+        }
+
+        .releases-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+          padding-bottom: 10px;
+          border-bottom: 1px solid #e9ecef;
+        }
+
+        .releases-stats {
+          color: #6c757d;
+          font-size: 14px;
+        }
+
+        .releases-empty {
+          text-align: center;
+          padding: 40px 20px;
+          color: #6c757d;
+        }
+
+        @media (max-width: 768px) {
+          .releases-container {
+            padding: 10px;
+          }
+          
+          .releases-header {
+            flex-direction: column;
+            gap: 10px;
+            align-items: stretch;
+          }
+        }
+      `}</style>
+    </div>
   )
 }
 
