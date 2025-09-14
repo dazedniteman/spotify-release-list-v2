@@ -94,4 +94,53 @@ export const syncTopArtistsStart = createAction('syncTopArtistsStart')
 export const syncTopArtistsError = createAction('syncTopArtistsError')
 
 export const syncLastFm = createAction('syncLastFm')
-export const sync
+export const syncLastFmStart = createAction('syncLastFmStart')
+export const syncLastFmError = createAction('syncLastFmError')
+
+/** @type {ActionCreatorWithPayload<{ artistId: string, boost: number }, 'boostArtistAffinity'>} */
+export const boostArtistAffinity = createAction('boostArtistAffinity')
+
+/** @type {ActionCreatorWithPayload<string[], 'addSimilarArtistsToDiscovery'>} */
+export const addSimilarArtistsToDiscovery = createAction('addSimilarArtistsToDiscovery')
+
+/** @type {ActionCreatorWithPayload<string[], 'setPreferredGenres'>} */
+export const setPreferredGenres = createAction('setPreferredGenres')
+
+/** @type {ActionCreatorWithPayload<{ releaseId: string, listened: boolean }, 'markReleaseListened'>} */
+export const markReleaseListened = createAction('markReleaseListened')
+
+export const validateLastFmCredentials = createAction('validateLastFmCredentials')
+export const validateLastFmCredentialsStart = createAction('validateLastFmCredentialsStart')
+export const validateLastFmCredentialsFinished = createAction('validateLastFmCredentialsFinished')
+export const validateLastFmCredentialsError = createAction('validateLastFmCredentialsError')
+
+// ==================== VIEW MODE AND TABLE ACTIONS ====================
+
+/** @type {ActionCreatorWithPayload<'cards' | 'table', 'setViewMode'>} */
+export const setViewMode = createAction('setViewMode')
+
+/** @type {ActionCreatorWithPayload<{ field: string, direction: 'asc' | 'desc' }, 'setTableSort'>} */
+export const setTableSort = createAction('setTableSort')
+
+export const toggleViewMode = createAction('toggleViewMode')
+
+// ==================== INSTANT FILTERING ACTIONS ====================
+
+/** @type {ActionCreatorWithPayload<string[], 'setInstantArtistFilter'>} */
+export const setInstantArtistFilter = createAction('setInstantArtistFilter')
+
+/** @type {ActionCreatorWithPayload<string[], 'addToArtistFilter'>} */
+export const addToArtistFilter = createAction('addToArtistFilter')
+
+/** @type {ActionCreatorWithPayload<string[], 'removeFromArtistFilter'>} */
+export const removeFromArtistFilter = createAction('removeFromArtistFilter')
+
+export const clearInstantFilters = createAction('clearInstantFilters')
+
+// ==================== IMPROVED SYNC ACTIONS ====================
+
+export const forceSyncRefresh = createAction('forceSyncRefresh')
+export const syncRetry = createAction('syncRetry')
+
+/** @type {ActionCreatorWithPayload<{ stage: string, progress: number }, 'setSyncStage'>} */
+export const setSyncStage = createAction('setSyncStage')
