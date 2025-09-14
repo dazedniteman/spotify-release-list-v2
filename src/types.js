@@ -1,35 +1,5 @@
 /**
- * Custom types
- *
- * @typedef {{
- *   authorizing: boolean
- *   albums: AlbumsMap
- *   syncing: boolean
- *   syncingProgress: number
- *   lastSync?: string
- *   lastAutoSync?: string
- *   previousSyncMaxDate?: string
- *   creatingPlaylist: boolean
- *   updatingPlaylist: boolean
- *   loadingPlaylists: boolean
- *   playlistResult?: Playlist
- *   playlistForm: PlaylistForm
- *   playlists: Playlist[]
- *   selectedPlaylistId?: string
- *   lastPlaylistsRefresh?: string
- *   user?: User
- *   message?: Message
- *   playlistModalVisible: boolean
- *   updatePlaylistModalVisible: boolean
- *   filtersVisible: boolean
- *   settings: Settings
- *   filters: Filters
- *   updateReady: boolean
- *   favorites: Favorites
- *   editingFavorites: boolean
- *   lastSettingsPath?: string
- *   labelBlocklistHeight?: number
- * }} State
+ * Enhanced Custom types with new features
  *
  * @typedef {{
  *   nonce?: string
@@ -72,6 +42,19 @@
  *   artistBlocklist: string
  *   releasesOrder: ReleasesOrder
  *   trackHistory: boolean
+ *   enableSmartSort: boolean
+ *   smartSortWeight: number
+ *   showAffinityIndicators: boolean
+ *   affinityThreshold: number
+ *   lastFmEnabled: boolean
+ *   lastFmApiKey: string
+ *   lastFmUsername: string
+ *   lastFmWeight: number
+ *   lastFmSyncEnabled: boolean
+ *   enableSimilarArtists: boolean
+ *   similarArtistsWeight: number
+ *   enableGenreFiltering: boolean
+ *   preferredGenres: string[]
  * }} Settings
  *
  * @typedef {{
@@ -84,16 +67,19 @@
  *   excludeDuplicates: boolean
  *   favoritesOnly: boolean
  *   newOnly: boolean
+ *   highAffinityOnly: boolean
  * }} Filters
  *
  * @typedef {{
  *   id: string
  *   name: string
- *   image: string
+ *   image?: string
  *   releaseDate: string
  *   totalTracks: number
  *   label?: string
  *   popularity?: number
+ *   affinityScore?: number
+ *   affinityCategory?: 'high' | 'medium' | 'low' | 'none'
  * }} AlbumBase
  *
  * @typedef {AlbumBase & {
@@ -140,7 +126,7 @@
  *   refreshToken: string
  * }} TokenApiResult
  *
- * @typedef {{ id: string, name: string, image: string }} User
+ * @typedef {{ id: string, name: string, image?: string }} User
  * @typedef {{ id: string, name: string }} Artist
  * @typedef {{ id: string, name: string }} Playlist
  * @typedef {{ [id: string]: Artist }} ArtistsMap
@@ -164,9 +150,20 @@
  * @typedef {Record<string, string[]>} BlockedLabels
  * @typedef {ReturnType<typeof import('./sagas/request').setupWorkers>} RequestWorkers
  * @typedef {'append' | 'replace'} PlaylistUpdateStrategy
- */
-
-/**
+ *
+ * // New Action Types for Enhanced Features
+ * @typedef {ReturnType<typeof import('state/actions').setViewMode>} SetViewModeAction
+ * @typedef {ReturnType<typeof import('state/actions').toggleViewMode>} ToggleViewModeAction
+ * @typedef {ReturnType<typeof import('state/actions').setTableSort>} SetTableSortAction
+ * @typedef {ReturnType<typeof import('state/actions').setArtistAffinity>} SetArtistAffinityAction
+ * @typedef {ReturnType<typeof import('state/actions').syncTopArtistsFinished>} SyncTopArtistsFinishedAction
+ * @typedef {ReturnType<typeof import('state/actions').syncLastFmFinished>} SyncLastFmFinishedAction
+ * @typedef {ReturnType<typeof import('state/actions').setSyncStage>} SetSyncStageAction
+ * @typedef {ReturnType<typeof import('state/actions').setInstantArtistFilter>} SetInstantArtistFilterAction
+ * @typedef {ReturnType<typeof import('state/actions').addToArtistFilter>} AddToArtistFilterAction
+ * @typedef {ReturnType<typeof import('state/actions').removeFromArtistFilter>} RemoveFromArtistFilterAction
+ * @typedef {ReturnType<typeof import('state/actions').clearInstantFilters>} ClearInstantFiltersAction
+ *
  * @template T
  * @typedef {{ result?: T, error?: Error, requestPayload: RequestChannelMessagePayload }} ResponseChannelMessage<T>
  */
@@ -229,7 +226,7 @@
  */
 
 /**
- * Actions
+ * Actions - Extended with new actions
  *
  * @typedef {ReturnType<typeof import('state/actions').authorize>} AuthorizeAction
  * @typedef {ReturnType<typeof import('state/actions').authorizeStart>} AuthorizeStartAction
@@ -329,7 +326,18 @@
  *   | SetFavoriteAllAction
  *   | ToggleEditingFavoritesAction
  *   | SetLastSettingsPathAction
- *   | DownloadAlbumsCsvAction} Action
+ *   | DownloadAlbumsCsvAction
+ *   | SetViewModeAction
+ *   | ToggleViewModeAction  
+ *   | SetTableSortAction
+ *   | SetArtistAffinityAction
+ *   | SyncTopArtistsFinishedAction
+ *   | SyncLastFmFinishedAction
+ *   | SetSyncStageAction
+ *   | SetInstantArtistFilterAction
+ *   | AddToArtistFilterAction
+ *   | RemoveFromArtistFilterAction
+ *   | ClearInstantFiltersAction} Action
  */
 
 /**
@@ -449,3 +457,50 @@
  * @template {Generator} T
  * @typedef {T extends Generator<any, infer R, any> ? R : never} GeneratorReturnType<T>
  */
+ *   authorizing: boolean
+ *   albums: AlbumsMap
+ *   syncing: boolean
+ *   syncingProgress: number
+ *   syncStage?: { stage: string, progress: number }
+ *   lastSync?: string
+ *   lastAutoSync?: string
+ *   previousSyncMaxDate?: string
+ *   creatingPlaylist: boolean
+ *   updatingPlaylist: boolean
+ *   loadingPlaylists: boolean
+ *   playlistResult?: Playlist
+ *   playlistForm: PlaylistForm
+ *   playlists: Playlist[]
+ *   selectedPlaylistId?: string
+ *   lastPlaylistsRefresh?: string
+ *   user?: User
+ *   message?: Message
+ *   playlistModalVisible: boolean
+ *   updatePlaylistModalVisible: boolean
+ *   filtersVisible: boolean
+ *   viewMode: 'cards' | 'table'
+ *   tableSort: TableSort
+ *   instantFilters: InstantFilters
+ *   settings: Settings
+ *   filters: Filters
+ *   updateReady: boolean
+ *   favorites: Favorites
+ *   editingFavorites: boolean
+ *   lastSettingsPath?: string
+ *   labelBlocklistHeight?: number
+ *   artistAffinity: Record<string, number>
+ *   lastFmData?: LastFmData
+ *   topArtistsData?: TopArtistsData
+ * }} State
+ *
+ * @typedef {{
+ *   field: string
+ *   direction: 'asc' | 'desc'
+ * }} TableSort
+ *
+ * @typedef {{
+ *   artistIds: string[]
+ *   excludeArtistIds: string[]
+ * }} InstantFilters
+ *
+ * @typedef
