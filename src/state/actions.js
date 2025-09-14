@@ -1,4 +1,8 @@
+// src/state/actions.js - Enhanced with new smart sorting, Last.fm actions, and table view
+
 import { createAction } from '@reduxjs/toolkit'
+
+// ==================== EXISTING ACTIONS ====================
 
 /** @type {ActionCreatorWithPayload<{ locationSearch: string }, 'authorize'>} */
 export const authorize = createAction('authorize')
@@ -67,7 +71,27 @@ export const toggleEditingFavorites = createAction('toggleEditingFavorites')
 /** @type {ActionCreatorWithPayload<string, 'setLastSettingsPath'>} */
 export const setLastSettingsPath = createAction('setLastSettingsPath')
 export const applyLabelBlocklist = createAction('applyLabelBlocklist')
+/** @type {ActionCreatorWithPayload<string[], 'applyArtistBlocklist'>} */
+export const applyArtistBlocklist = createAction('applyArtistBlocklist')
 /** @type {ActionCreatorWithPayload<number, 'setLabelBlocklistHeight'>} */
 export const setLabelBlocklistHeight = createAction('setLabelBlocklistHeight')
 export const syncAnimationFinished = createAction('syncAnimationFinished')
 export const downloadAlbumsCsv = createAction('downloadAlbumsCsv')
+
+// ==================== NEW SMART SORTING & LAST.FM ACTIONS ====================
+
+/** @type {ActionCreatorWithPayload<Record<string, number>, 'setArtistAffinity'>} */
+export const setArtistAffinity = createAction('setArtistAffinity')
+
+/** @type {ActionCreatorWithPayload<{ artists: any[], affinity: Record<string, number> }, 'syncTopArtistsFinished'>} */
+export const syncTopArtistsFinished = createAction('syncTopArtistsFinished')
+
+/** @type {ActionCreatorWithPayload<{ username: string, artists: any[] }, 'syncLastFmFinished'>} */
+export const syncLastFmFinished = createAction('syncLastFmFinished')
+
+export const syncTopArtists = createAction('syncTopArtists')
+export const syncTopArtistsStart = createAction('syncTopArtistsStart')
+export const syncTopArtistsError = createAction('syncTopArtistsError')
+
+export const syncLastFm = createAction('syncLastFm')
+export const sync
