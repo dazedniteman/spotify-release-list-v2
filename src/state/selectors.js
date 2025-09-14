@@ -1,3 +1,5 @@
+// src/state/selectors.js - Enhanced with smart sorting, table view, and improved filtering
+
 import { createSelector } from 'reselect'
 import { createDraftSafeSelector } from '@reduxjs/toolkit'
 import moment from 'moment'
@@ -6,11 +8,14 @@ import intersect from 'fast_array_intersect'
 import last from 'lodash/last'
 import isEqual from 'lodash/isEqual'
 import escapeRegExp from 'lodash/escapeRegExp'
+import orderBy from 'lodash/orderBy'
 import { AlbumGroup } from 'enums'
-import { includesTruthy, getReleasesBetween, merge, hasVariousArtists } from 'helpers'
+import { includesTruthy, getReleasesBetween, merge, hasVariousArtists, calculateAlbumAffinity } from 'helpers'
 import { buildReleases, buildReleasesMap } from 'helpers'
 import { albumsNew } from 'albums'
 import { initialState } from './reducer'
+
+// ==================== EXISTING SELECTORS ====================
 
 /** @param {State} state */
 export const getAuthorizing = (state) => state.authorizing
@@ -93,7 +98,18 @@ export const getLastSettingsPath = (state) => state.lastSettingsPath
 /** @param {State} state */
 export const getLabelBlocklistHeight = (state) => state.labelBlocklistHeight
 
-// Individual settings selectors
+// ==================== NEW SMART SORTING SELECTORS ====================
+
+/** @param {State} state */
+export const getArtistAffinity = (state) => state.artistAffinity || {}
+
+/** @param {State} state */
+export const getViewMode = (state) => state.viewMode || 'cards'
+
+/** @param {State} state */
+export const getTableSort = (state) => state.tableSort || { field: 'releaseDate', direction: 'desc' }
+
+// Individual settings selectors (existing)
 export const getSettingsArtistSources = createSelector(
   getSettings,
   (settings) => settings.artistSources
@@ -114,6 +130,46 @@ export const getSettingsReleasesOrder = createSelector(
 export const getSettingsTrackHistory = createSelector(
   getSettings,
   (settings) => settings.trackHistory
+)
+
+// New smart sorting settings selectors
+export const getSettingsEnableSmartSort = createSelector(
+  getSettings,
+  (settings) => settings.enableSmartSort || false
+)
+export const getSettingsSmartSortWeight = createSelector(
+  getSettings,
+  (settings) => settings.smartSortWeight || 70
+)
+export const getSettingsShowAffinityIndicators = createSelector(
+  getSettings,
+  (settings) => settings.showAffinityIndicators !== false
+)
+export const getSettingsAffinityThreshold = createSelector(
+  getSettings,
+  (settings) => settings.affinityThreshold || 40
+)
+
+// Last.fm settings selectors
+export const getSettingsLastFmEnabled = createSelector(
+  getSettings,
+  (settings) => settings.lastFmEnabled || false
+)
+export const getSettingsLastFmApiKey = createSelector(
+  getSettings,
+  (settings) => settings.lastFmApiKey || ''
+)
+export const getSettingsLastFmUsername = createSelector(
+  getSettings,
+  (settings) => settings.lastFmUsername || ''
+)
+export const getSettingsLastFmWeight = createSelector(
+  getSettings,
+  (settings) => settings.lastFmWeight || 40
+)
+export const getSettingsLastFmSyncEnabled = createSelector(
+  getSettings,
+  (settings) => settings.lastFmSyncEnabled || false
 )
 
 export const getSettingsLabelBlocklist = createSelector(
@@ -166,6 +222,7 @@ export const getFiltersFavoritesOnly = createSelector(
   (filters) => filters.favoritesOnly
 )
 export const getFiltersNewOnly = createSelector(getFilters, (filters) => filters.newOnly)
+export const getFiltersHighAffinityOnly = createSelector(getFilters, (filters) => filters.highAffinityOnly || false)
 
 /**
  * Get relevant app data.
@@ -206,6 +263,7 @@ export const getFiltersApplied = createSelector(
   getFiltersExcludeDuplicates,
   getFiltersFavoritesOnly,
   getFiltersNewOnly,
+  getFiltersHighAffinityOnly,
   (groups, ...rest) => Boolean(groups.length) || includesTruthy(rest)
 )
 
@@ -230,16 +288,56 @@ export const getLastSyncDate = createSelector(
 export const getAlbumsArray = createSelector(getAlbums, (albums) => Object.values(albums))
 
 /**
- * Get all releases as a map with release dates as keys
+ * Enhanced albums array with affinity scores
  */
-export const getOriginalReleasesMap = createSelector(getAlbumsArray, buildReleasesMap)
+export const getAlbumsArrayWithAffinity = createSelector(
+  [getAlbumsArray, getArtistAffinity, getSettingsShowAffinityIndicators],
+  (albums, artistAffinity, showIndicators) => {
+    if (!showIndicators || Object.keys(artistAffinity).length === 0) {
+      return albums.map(album => ({ ...album, affinityScore: 0, affinityCategory: 'none' }))
+    }
+    
+    return albums.map(album => {
+      const affinityScore = calculateAlbumAffinity(album, artistAffinity)
+      const affinityCategory = getAffinityCategory(affinityScore)
+      
+      return {
+        ...album,
+        affinityScore,
+        affinityCategory
+      }
+    })
+  }
+)
 
 /**
- * Get all releases as ordered array of { date, albums } objects
+ * Get affinity category for UI display
+ */
+function getAffinityCategory(score) {
+  if (score >= 70) return 'high'
+  if (score >= 40) return 'medium'  
+  if (score >= 10) return 'low'
+  return 'none'
+}
+
+/**
+ * Get all releases as a map with release dates as keys (using enhanced albums)
+ */
+export const getOriginalReleasesMap = createSelector(getAlbumsArrayWithAffinity, buildReleasesMap)
+
+/**
+ * Enhanced releases with smart sorting support
  */
 const getOriginalReleases = createSelector(
-  [getOriginalReleasesMap, getSettingsReleasesOrder],
-  buildReleases
+  [
+    getOriginalReleasesMap, 
+    getSettingsReleasesOrder, 
+    getSettingsEnableSmartSort, 
+    getArtistAffinity, 
+    getSettingsSmartSortWeight
+  ],
+  (releasesMap, releasesOrder, enableSmartSort, artistAffinity, smartSortWeight) => 
+    buildReleases(releasesMap, releasesOrder, enableSmartSort, artistAffinity, smartSortWeight)
 )
 
 /**
@@ -283,7 +381,7 @@ export const getFiltersDates = createSelector(
 /**
  * Get all releases as a map with album groups as keys
  */
-export const getReleasesGroupMap = createSelector(getAlbumsArray, (albums) =>
+export const getReleasesGroupMap = createSelector(getAlbumsArrayWithAffinity, (albums) =>
   albums.reduce((map, album) => {
     const albumMap = Object.keys(album.artists).reduce((albumMap, group) => {
       albumMap[group] = [album.id]
@@ -295,10 +393,10 @@ export const getReleasesGroupMap = createSelector(getAlbumsArray, (albums) =>
 )
 
 /**
- * Get current Fuse.js instance
+ * Get current Fuse.js instance (enhanced with affinity data)
  */
 const getFuseInstance = createSelector(
-  getAlbumsArray,
+  getAlbumsArrayWithAffinity,
   (albums) =>
     new Fuse(albums, {
       threshold: 0.1,
@@ -311,7 +409,7 @@ const getFuseInstance = createSelector(
 /**
  * Get all non-"Various Artists" album IDs
  */
-const getNonVariousArtistsAlbumIds = createSelector(getAlbumsArray, (albums) =>
+const getNonVariousArtistsAlbumIds = createSelector(getAlbumsArrayWithAffinity, (albums) =>
   albums.reduce((ids, album) => {
     if (!hasVariousArtists(album)) ids.push(album.id)
     return ids
@@ -321,7 +419,7 @@ const getNonVariousArtistsAlbumIds = createSelector(getAlbumsArray, (albums) =>
 /**
  * Get all non-"Remix" album IDs
  */
-const getNonRemixAlbumIds = createSelector(getAlbumsArray, (albums) =>
+const getNonRemixAlbumIds = createSelector(getAlbumsArrayWithAffinity, (albums) =>
   albums.reduce((ids, album) => {
     if (!/remix/i.test(album.name)) ids.push(album.id)
     return ids
@@ -332,9 +430,9 @@ const getNonRemixAlbumIds = createSelector(getAlbumsArray, (albums) =>
  * Get album IDs with duplicates removed
  */
 const getNoDuplicatesAlbumIds = createSelector(getOriginalReleases, (releases) => {
-  const charsMap = { '[': '(', ']': ')', '’': "'" }
+  const charsMap = { '[': '(', ']': ')', ''': "'" }
   const escapedChars = escapeRegExp(Object.keys(charsMap).join(''))
-  const charsRegex = new RegExp(`[${escapedChars}]`, 'g')
+  const charsRegex = new RegExp(`[${escapedChars}]`, 'g`)
 
   return releases.reduce((ids, { albums }) => {
     /** @type {Record<string, string>} */
@@ -363,8 +461,19 @@ const getFavoriteAlbumIds = createSelector(getFavorites, (favorites) =>
 /**
  * Get new album ids
  */
-const getNewAlbumIds = createSelector(getAlbumsArray, (albums) =>
+const getNewAlbumIds = createSelector(getAlbumsArrayWithAffinity, (albums) =>
   albums.filter((album) => albumsNew.has(album.id)).map((album) => album.id)
+)
+
+/**
+ * Get high-affinity album IDs (new filter option)
+ */
+const getHighAffinityAlbumIds = createSelector(
+  [getAlbumsArrayWithAffinity, getSettingsAffinityThreshold],
+  (albums, threshold) =>
+    albums
+      .filter((album) => album.affinityScore >= threshold)
+      .map((album) => album.id)
 )
 
 /**
@@ -434,6 +543,14 @@ const getNewFiltered = createSelector(
 )
 
 /**
+ * Get high affinity album ids based on filter
+ */
+const getHighAffinityFiltered = createSelector(
+  [getFiltersHighAffinityOnly, getHighAffinityAlbumIds],
+  (highAffinityOnly, ids) => highAffinityOnly && ids
+)
+
+/**
  * Intersect all filtered results and return albums as an array
  */
 export const getFilteredAlbumsArray = createSelector(
@@ -446,7 +563,13 @@ export const getFilteredAlbumsArray = createSelector(
   getDuplicatesFiltered,
   getFavoritesFiltered,
   getNewFiltered,
-  (albums, ...filtered) => intersect(filtered.filter(Array.isArray)).map((id) => albums[id])
+  getHighAffinityFiltered,
+  (albums, ...filtered) => {
+    const validFilters = filtered.filter(Array.isArray)
+    if (validFilters.length === 0) return Object.values(albums)
+    
+    return intersect(validFilters).map((id) => albums[id]).filter(Boolean)
+  }
 )
 
 /**
@@ -458,8 +581,9 @@ const getFilteredReleasesMap = createSelector(getFilteredAlbumsArray, buildRelea
  * Get filtered releases as ordered array of { date, albums } objects
  */
 const getFilteredReleases = createSelector(
-  [getFilteredReleasesMap, getSettingsReleasesOrder],
-  buildReleases
+  [getFilteredReleasesMap, getSettingsReleasesOrder, getSettingsEnableSmartSort, getArtistAffinity, getSettingsSmartSortWeight],
+  (releasesMap, releasesOrder, enableSmartSort, artistAffinity, smartSortWeight) => 
+    buildReleases(releasesMap, releasesOrder, enableSmartSort, artistAffinity, smartSortWeight)
 )
 
 /**
@@ -471,11 +595,44 @@ export const getReleases = createSelector(
 )
 
 /**
- * Get final releases array
+ * Get final releases array (flat list for table view)
  */
 export const getReleasesArray = createDraftSafeSelector(
-  [getFiltersApplied, getFilteredAlbumsArray, getAlbumsArray],
+  [getFiltersApplied, getFilteredAlbumsArray, getAlbumsArrayWithAffinity],
   (filtersApplied, filtered, original) => (filtersApplied ? filtered : original)
+)
+
+/**
+ * Get table-sorted releases array
+ */
+export const getTableSortedReleases = createSelector(
+  [getReleasesArray, getTableSort],
+  (albums, tableSort) => {
+    if (!albums || albums.length === 0) return []
+    
+    const { field, direction } = tableSort
+    
+    const sortFunction = (album) => {
+      switch (field) {
+        case 'artist':
+          return Object.values(album.artists).flat()[0]?.name?.toLowerCase() || ''
+        case 'album':
+          return album.name.toLowerCase()
+        case 'releaseDate':
+          return album.releaseDate
+        case 'affinity':
+          return album.affinityScore || 0
+        case 'totalTracks':
+          return album.totalTracks
+        case 'popularity':
+          return album.popularity || 0
+        default:
+          return album.releaseDate
+      }
+    }
+    
+    return orderBy(albums, [sortFunction], [direction])
+  }
 )
 
 /**
