@@ -1,85 +1,74 @@
-// src/components/Releases.js - Updated to use new view modes
+// src/components/releases/Releases.js - Main releases component with view modes
 
 import React from 'react'
 import { useSelector } from 'react-redux'
-import { getReleases, getViewMode, getHasReleases } from 'state/selectors'
-import TableView from './TableView'
-import ViewModeToggle from './ViewModeToggle'
-import SyncProgress from './SyncProgress'
-// Import your existing card components
-import ReleasesCards from './ReleasesCards' // or whatever you call your current card view
+import { 
+  getReleases, 
+  getViewMode, 
+  getHasReleases, 
+  getSyncing, 
+  getUser,
+  getLastSyncDate 
+} from 'state/selectors'
+import { Filters } from 'components/filters'
+import { PlaylistModalContainer } from 'components/modals'
+import { Content, VerticalLayout } from 'components/common'
+import ReleasesHeader from './ReleasesHeader'
+import ReleaseList from './ReleaseList'
+import Intro from './Intro'
+import Loading from './Loading'
 
-export function Releases() {
+/**
+ * Main releases component with enhanced view modes
+ */
+function Releases() {
   const releases = useSelector(getReleases)
   const viewMode = useSelector(getViewMode)
   const hasReleases = useSelector(getHasReleases)
+  const syncing = useSelector(getSyncing)
+  const user = useSelector(getUser)
+  const lastSyncDate = useSelector(getLastSyncDate)
 
-  if (!hasReleases) {
+  // Show intro if not logged in
+  if (!user && !syncing) {
     return (
-      <div className="releases-empty">
-        <p>No releases found. Try adjusting your filters or syncing your data.</p>
-      </div>
+      <VerticalLayout className="Releases">
+        <ReleasesHeader />
+        <Content>
+          <Intro />
+        </Content>
+      </VerticalLayout>
     )
   }
 
+  // Show loading during sync
+  if (syncing) {
+    return (
+      <VerticalLayout className="Releases">
+        <ReleasesHeader />
+        <Content>
+          <Loading />
+        </Content>
+      </VerticalLayout>
+    )
+  }
+
+  // Show main content
   return (
-    <div className="releases-container">
-      <SyncProgress />
-      
-      {/* Header with view toggle */}
-      <div className="releases-header">
-        <div className="releases-stats">
-          <span>{releases.length} releases</span>
-        </div>
-        <ViewModeToggle />
-      </div>
-
-      {/* Conditional rendering based on view mode */}
-      {viewMode === 'table' ? (
-        <TableView />
-      ) : (
-        <ReleasesCards releases={releases} />
-      )}
-
-      <style jsx>{`
-        .releases-container {
-          width: 100%;
-          padding: 20px;
-        }
-
-        .releases-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-          padding-bottom: 10px;
-          border-bottom: 1px solid #e9ecef;
-        }
-
-        .releases-stats {
-          color: #6c757d;
-          font-size: 14px;
-        }
-
-        .releases-empty {
-          text-align: center;
-          padding: 40px 20px;
-          color: #6c757d;
-        }
-
-        @media (max-width: 768px) {
-          .releases-container {
-            padding: 10px;
-          }
-          
-          .releases-header {
-            flex-direction: column;
-            gap: 10px;
-            align-items: stretch;
-          }
-        }
-      `}</style>
-    </div>
+    <VerticalLayout className="Releases">
+      <ReleasesHeader />
+      <Filters />
+      <Content>
+        {hasReleases ? (
+          <ReleaseList releases={releases} />
+        ) : (
+          <div className="has-text-centered has-text-grey">
+            <p>No releases found. Try adjusting your filters or syncing your data.</p>
+          </div>
+        )}
+      </Content>
+      <PlaylistModalContainer />
+    </VerticalLayout>
   )
 }
 
