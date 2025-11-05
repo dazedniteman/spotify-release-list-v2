@@ -1,6 +1,7 @@
 import { buildUser, buildAlbumRaw, sleep } from 'helpers'
 
 const API_URL = 'https://api.spotify.com/v1'
+const LASTFM_API_URL = 'https://ws.audioscrobbler.com/2.0/'
 const HTTP_TOO_MANY_REQUESTS = 429
 
 /**
@@ -28,6 +29,276 @@ export async function getUser(token, signal) {
   /** @type {SpotifyUser} */
   const userResponse = await get(apiUrl('me'), token, signal)
   return buildUser(userResponse)
+}
+
+/**
+ * Get user's top artists with extended limit (up to 500)
+ * 
+ * @param {string} token
+ * @param {'medium_term' | 'long_term'} timeRange
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{ artists: SpotifyArtist[], affinity: Record<string, number> }>}
+ */
+export async function getUserTopArtistsExtended(token, timeRange, signal) {
+  const allArtists = []
+  const affinityScores = {}
+  let offset = 0
+  const limit = 50 // Spotify's max per request
+  
+  // Get up to 500 artists (10 requests of 50 each)
+  while (offset < 500) {
+    const params = new URLSearchParams({ 
+      time_range: timeRange, 
+      limit: limit.toString(), 
+      offset: offset.toString() 
+    })
+    
+    try {
+      /** @type {Paged<SpotifyArtist>} */
+      const response = await get(apiUrl(`me/top/artists?${params}`), token, signal)
+      
+      if (!response.items || response.items.length === 0) break
+      
+      // Calculate affinity scores based on position (higher position = higher affinity)
+      response.items.forEach((artist, index) => {
+        const globalPosition = offset + index
+        // Score from 100 (top artist) down to 1 (500th artist)
+        const affinityScore = Math.max(1, 100 - (globalPosition / 5))
+        
+        allArtists.push(artist)
+        affinityScores[artist.id] = affinityScore
+      })
+      
+      offset += response.items.length
+      
+      // If we got fewer items than requested, we've reached the end
+      if (response.items.length < limit) break
+      
+    } catch (error) {
+      console.warn(`Failed to fetch top artists at offset ${offset}:`, error)
+      break
+    }
+  }
+  
+  return { artists: allArtists, affinity: affinityScores }
+}
+
+/**
+ * Get combined top artists data from medium and long term
+ * 
+ * @param {string} token
+ * @param {AbortSignal} [signal]
+ */
+export async function getUserTopArtistsCombined(token, signal) {
+  const [mediumTerm, longTerm] = await Promise.all([
+    getUserTopArtistsExtended(token, 'medium_term', signal),
+    getUserTopArtistsExtended(token, 'long_term', signal)
+  ])
+  
+  // Combine and weight the affinity scores
+  const combinedAffinity = {}
+  const allArtistIds = new Set([
+    ...Object.keys(mediumTerm.affinity),
+    ...Object.keys(longTerm.affinity)
+  ])
+  
+  allArtistIds.forEach(artistId => {
+    const mediumScore = mediumTerm.affinity[artistId] || 0
+    const longScore = longTerm.affinity[artistId] || 0
+    
+    // Weight medium term higher (70%) than long term (30%)
+    // Recent listening habits are more relevant for new releases
+    combinedAffinity[artistId] = (mediumScore * 0.7) + (longScore * 0.3)
+  })
+  
+  // Get unique artists (prioritize medium term data for artist objects)
+  const artistsMap = new Map()
+  mediumTerm.artists.forEach(artist => artistsMap.set(artist.id, artist))
+  longTerm.artists.forEach(artist => {
+    if (!artistsMap.has(artist.id)) {
+      artistsMap.set(artist.id, artist)
+    }
+  })
+  
+  return {
+    artists: Array.from(artistsMap.values()),
+    affinity: combinedAffinity
+  }
+}
+
+/**
+ * Last.fm API integration for enhanced artist data
+ */
+export class LastFmApi {
+  /**
+   * @param {string} apiKey
+   */
+  constructor(apiKey) {
+    this.apiKey = apiKey
+  }
+  
+  /**
+   * Get user's top artists from Last.fm
+   * 
+   * @param {string} username
+   * @param {'7day' | '1month' | '3month' | '6month' | '12month' | 'overall'} period
+   * @param {number} [limit=500]
+   */
+  async getUserTopArtists(username, period = 'overall', limit = 500) {
+    const params = new URLSearchParams({
+      method: 'user.gettopartists',
+      user: username,
+      api_key: this.apiKey,
+      format: 'json',
+      limit: limit.toString(),
+      period
+    })
+    
+    try {
+      const response = await fetch(`${LASTFM_API_URL}?${params}`)
+      const data = await response.json()
+      
+      if (data.error) {
+        throw new Error(`Last.fm API error: ${data.message}`)
+      }
+      
+      return data.topartists?.artist || []
+    } catch (error) {
+      console.warn('Last.fm API request failed:', error)
+      return []
+    }
+  }
+  
+  /**
+   * Get similar artists for a given artist
+   * 
+   * @param {string} artistName
+   * @param {number} [limit=50]
+   */
+  async getSimilarArtists(artistName, limit = 50) {
+    const params = new URLSearchParams({
+      method: 'artist.getsimilar',
+      artist: artistName,
+      api_key: this.apiKey,
+      format: 'json',
+      limit: limit.toString()
+    })
+    
+    try {
+      const response = await fetch(`${LASTFM_API_URL}?${params}`)
+      const data = await response.json()
+      
+      if (data.error) {
+        console.warn(`Last.fm similar artists error for ${artistName}:`, data.message)
+        return []
+      }
+      
+      return data.similarartists?.artist || []
+    } catch (error) {
+      console.warn('Last.fm similar artists request failed:', error)
+      return []
+    }
+  }
+  
+  /**
+   * Get artist tags (genres)
+   * 
+   * @param {string} artistName
+   */
+  async getArtistTags(artistName) {
+    const params = new URLSearchParams({
+      method: 'artist.gettoptags',
+      artist: artistName,
+      api_key: this.apiKey,
+      format: 'json'
+    })
+    
+    try {
+      const response = await fetch(`${LASTFM_API_URL}?${params}`)
+      const data = await response.json()
+      
+      if (data.error) {
+        return []
+      }
+      
+      return data.toptags?.tag || []
+    } catch (error) {
+      console.warn('Last.fm artist tags request failed:', error)
+      return []
+    }
+  }
+}
+
+/**
+ * Enhanced artist affinity calculator that combines Spotify and Last.fm data
+ */
+export class ArtistAffinityCalculator {
+  /**
+   * @param {Record<string, number>} spotifyAffinity
+   * @param {any[]} lastFmTopArtists
+   * @param {string} [lastFmUsername]
+   */
+  constructor(spotifyAffinity, lastFmTopArtists = [], lastFmUsername = null) {
+    this.spotifyAffinity = spotifyAffinity
+    this.lastFmTopArtists = lastFmTopArtists
+    this.lastFmUsername = lastFmUsername
+    this.lastFmAffinityMap = this.buildLastFmAffinityMap()
+  }
+  
+  /**
+   * Build affinity map from Last.fm data
+   */
+  buildLastFmAffinityMap() {
+    const affinityMap = {}
+    
+    this.lastFmTopArtists.forEach((artist, index) => {
+      // Convert playcount to affinity score
+      const playcount = parseInt(artist.playcount) || 0
+      const position = index + 1
+      
+      // Score based on both playcount and position
+      const maxPlaycount = parseInt(this.lastFmTopArtists[0]?.playcount) || 1
+      const playcountScore = (playcount / maxPlaycount) * 50 // 0-50 points from playcount
+      const positionScore = Math.max(0, 50 - position) // 0-50 points from position
+      
+      affinityMap[artist.name.toLowerCase()] = playcountScore + positionScore
+    })
+    
+    return affinityMap
+  }
+  
+  /**
+   * Get combined affinity score for an artist
+   * 
+   * @param {string} spotifyArtistId
+   * @param {string} artistName
+   * @returns {number} Affinity score 0-100
+   */
+  getAffinityScore(spotifyArtistId, artistName) {
+    const spotifyScore = this.spotifyAffinity[spotifyArtistId] || 0
+    const lastFmScore = this.lastFmAffinityMap[artistName.toLowerCase()] || 0
+    
+    // If we have both scores, weight them
+    if (spotifyScore > 0 && lastFmScore > 0) {
+      return (spotifyScore * 0.6) + (lastFmScore * 0.4) // Favor Spotify data slightly
+    }
+    
+    // Return whichever score we have
+    return Math.max(spotifyScore, lastFmScore)
+  }
+  
+  /**
+   * Get affinity category for UI display
+   * 
+   * @param {number} score
+   * @returns {'high' | 'medium' | 'low' | 'none'}
+   */
+  getAffinityCategory(score) {
+    if (score >= 70) return 'high'
+    if (score >= 40) return 'medium'  
+    if (score >= 10) return 'low'
+    return 'none'
+  }
 }
 
 /**
