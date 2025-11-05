@@ -379,6 +379,37 @@ export function buildReleases(releasesMap, releasesOrder) {
 }
 
 /**
+ * Calculate artist affinity score for an album
+ * 
+ * @param {Album} album
+ * @param {Record<string, number>} artistAffinity
+ * @returns {number} Combined affinity score (0-100)
+ */
+export function calculateAlbumAffinity(album, artistAffinity) {
+  const allArtists = Object.values(album.artists).flat().concat(album.otherArtists)
+  
+  if (allArtists.length === 0) return 0
+  
+  // Get affinity scores for all artists on the album
+  const affinityScores = allArtists
+    .map(artist => artistAffinity[artist.id] || 0)
+    .filter(score => score > 0)
+  
+  if (affinityScores.length === 0) return 0
+  
+  // Use the highest affinity score (main artist typically has highest)
+  const maxAffinity = Math.max(...affinityScores)
+  
+  // Give a small bonus if multiple artists on the album have affinity
+  const collaborationBonus = affinityScores.length > 1 ? 5 : 0
+  
+  return Math.min(100, maxAffinity + collaborationBonus)
+}
+
+import { includesTruthy, getReleasesBetween, merge, hasVariousArtists, calculateAlbumAffinity } from 'helpers'
+
+
+/**
  * Check if album contains Various Artists
  *
  * @param {Album} album
@@ -389,6 +420,8 @@ export function hasVariousArtists(album) {
     .concat(album.otherArtists)
     .some((artist) => artist.name === VARIOUS_ARTISTS || artist.id === VARIOUS_ARTISTS_ID)
 }
+
+
 
 /**
  * Delete albums from specified labels and return deleted IDs. Mutates `albumsMap`.
